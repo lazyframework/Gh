@@ -4,13 +4,13 @@ using UnityEngine;
 public class CyclingLegs : MonoBehaviour
 {
     [Header("Seret dari Hierarchy")]
-    public Transform bottomBracket;   
-    public Transform[] crankParts;    
-    public Renderer pedalsRenderer;   
+    public Transform bottomBracket;   // objek "BB"
+    public Transform[] crankParts;    // objek "Cranks" dan "Pedals"
+    public Renderer pedalsRenderer;   // objek "Pedals" (untuk hitung ukuran otomatis)
 
-    [Header("Penyesuaian")]
-    public float crankLength = 0.2f;  // Kita isi manual dulu 0.2 untuk tes
-    public float sideOffset = 0.1f;   // Kita isi manual dulu 0.1 untuk tes
+    [Header("Penyesuaian (biarkan 0 = otomatis)")]
+    public float crankLength = 0f;    
+    public float sideOffset = 0f;     
     public float footUpOffset = 0.05f;
     public float startAngle = 0f;     
 
@@ -18,7 +18,6 @@ public class CyclingLegs : MonoBehaviour
     private Transform bike;
     private float angle;
     private float speed;
-    private Vector3 dbgL, dbgR;
 
     void Awake()
     {
@@ -29,9 +28,18 @@ public class CyclingLegs : MonoBehaviour
 
     void Start()
     {
+        // Memastikan animator tidak mengunci kaki di pose lari/jatuh
         anim.SetBool("Grounded", true);
         anim.SetFloat("Speed", 0f);
         anim.SetFloat("MotionSpeed", 1f);
+
+        // Perhitungan otomatis ukuran pedal
+        if (pedalsRenderer != null)
+        {
+            Vector3 e = pedalsRenderer.bounds.extents;
+            if (crankLength <= 0f) crankLength = Vector3.Dot(Abs(bike.forward), e);
+            if (sideOffset <= 0f)  sideOffset  = Vector3.Dot(Abs(bike.right), e);
+        }
     }
 
     public void SetSpeed(float s) { speed = s; }
@@ -40,13 +48,20 @@ public class CyclingLegs : MonoBehaviour
     {
         float delta = speed * Time.deltaTime;
         angle += delta;
+        
+        // Memutar objek pedal secara visual
         foreach (var part in crankParts)
-            part.RotateAround(bottomBracket.position, bike.right, delta);
+        {
+            if (part != null)
+                part.RotateAround(bottomBracket.position, bike.right, delta);
+        }
     }
 
     void OnAnimatorIK(int layerIndex)
     {
+        // Kaki Kanan
         Foot(AvatarIKGoal.RightFoot, AvatarIKHint.RightKnee, HumanBodyBones.RightUpperLeg, angle + startAngle, 1f);
+        // Kaki Kiri (ditambah 180 derajat agar bergantian)
         Foot(AvatarIKGoal.LeftFoot,  AvatarIKHint.LeftKnee,  HumanBodyBones.LeftUpperLeg,  angle + startAngle + 180f, -1f);
     }
 
@@ -54,28 +69,28 @@ public class CyclingLegs : MonoBehaviour
     {
         Quaternion spin = Quaternion.AngleAxis(a, bike.right);
         
-        // Posisi target
+        // Menghitung posisi target (pedal)
         Vector3 pos = bottomBracket.position
                     + spin * (bike.forward * crankLength)
                     + bike.right * (side * sideOffset)
                     + bike.up * footUpOffset;
 
-        // Simpan untuk bola debug
-        if (goal == AvatarIKGoal.RightFoot) dbgR = pos; else dbgL = pos;
-
+        // Set Posisi Kaki
         anim.SetIKPositionWeight(goal, 1f);
-        anim.SetIKRotationWeight(goal, 1f);
         anim.SetIKPosition(goal, pos);
-        anim.SetIKRotation(goal, bike.rotation);
 
+        // Set Rotasi Kaki agar TIDAK PATAH/JUNGKIR BALIK
+        anim.SetIKRotationWeight(goal, 1f);
+        anim.SetIKRotation(goal, Quaternion.identity); 
+
+        // Set Arah Lutut (Hint)
         anim.SetIKHintPositionWeight(hint, 1f);
-        anim.SetIKHintPosition(hint, anim.GetBoneTransform(thigh).position + bike.forward * 0.5f);
+        Transform thighBone = anim.GetBoneTransform(thigh);
+        if (thighBone != null)
+        {
+            anim.SetIKHintPosition(hint, thighBone.position + bike.forward * 0.5f);
+        }
     }
 
-    // Memunculkan bola debug di Scene view
-    void OnDrawGizmos()
-    {
-        Gizmos.color = Color.red;   Gizmos.DrawSphere(dbgR, 0.05f); // Kaki Kanan
-        Gizmos.color = Color.green; Gizmos.DrawSphere(dbgL, 0.05f); // Kaki Kiri
-    }
+    static Vector3 Abs(Vector3 v) => new Vector3(Mathf.Abs(v.x), Mathf.Abs(v.y), Mathf.Abs(v.z));
 }
