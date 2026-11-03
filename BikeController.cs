@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem; // Wajib untuk Input System baru
 
 public class BikeController : MonoBehaviour
 {
@@ -8,7 +9,7 @@ public class BikeController : MonoBehaviour
     public float maxSpeed = 15f;
 
     [Header("Pedals")]
-    public Transform crank;                  // Drag objek Cranks ke sini
+    public Transform crank;
     public float pedalSpeedMultiplier = 40f;
 
     [Header("References")]
@@ -25,8 +26,25 @@ public class BikeController : MonoBehaviour
 
     void Update()
     {
-        horizontalInput = Input.GetAxis("Horizontal");
-        verticalInput = Input.GetAxis("Vertical");
+        // --- BACA INPUT DENGAN SISTEM BARU ---
+        horizontalInput = 0f;
+        verticalInput = 0f;
+
+        // Cek apakah ada keyboard yang terhubung
+        if (Keyboard.current != null)
+        {
+            // Input Vertikal (Maju/Mundur) pakai W/S atau Panah Atas/Bawah
+            if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed)
+                verticalInput = 1f;
+            else if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed)
+                verticalInput = -1f;
+
+            // Input Horizontal (Belok) pakai A/D atau Panah Kiri/Kanan
+            if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed)
+                horizontalInput = 1f;
+            else if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed)
+                horizontalInput = -1f;
+        }
 
         // Putar crank sesuai input maju/mundur
         if (crank != null && Mathf.Abs(verticalInput) > 0.05f)
