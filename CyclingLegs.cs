@@ -5,19 +5,21 @@ public class CyclingLegs : MonoBehaviour
 {
     [Header("Seret dari Hierarchy")]
     public Transform bottomBracket;   // objek "BB"
-    public Transform[] crankParts;    // "Cranks" dan "Pedals"
+    public Transform[] crankParts;    // objek "Cranks" dan "Pedals"
     public Renderer pedalsRenderer;   // objek "Pedals" (untuk hitung ukuran otomatis)
 
     [Header("Penyesuaian (biarkan 0 = otomatis)")]
-    public float crankLength = 0f;    // jarak BB ke pedal
-    public float sideOffset = 0f;     // jarak pedal dari tengah sepeda ke samping
     public float startAngle = 0f;     // ganti 180 kalau kaki kiri/kanan tertukar
 
     private Animator anim;
     private Transform bike;
     private float angle;
     private float speed;
-    private float footUpOffset;       // dihitung otomatis dari bounds pedal
+    
+    // Nilai otomatis
+    private float crankLength;
+    private float sideOffset;
+    private float footUpOffset;
 
     void Awake()
     {
@@ -36,18 +38,15 @@ public class CyclingLegs : MonoBehaviour
         if (pedalsRenderer != null)
         {
             Vector3 e = pedalsRenderer.bounds.extents;
-
-            // Panjang crank = setengah ukuran pedal sepanjang arah maju
-            if (crankLength <= 0f)
-                crankLength = Vector3.Dot(Abs(bike.forward), e);
-
-            // Offset ke samping = setengah lebar pedal
-            if (sideOffset <= 0f)
-                sideOffset = Vector3.Dot(Abs(bike.right), e);
-
-            // Offset ke atas = setengah tinggi pedal (supaya telapak menapak di atasnya)
-            // Ini menggantikan footUpOffset manual
+            
+            // Hitung semua nilai secara otomatis dari ukuran mesh pedal
+            crankLength = Vector3.Dot(Abs(bike.forward), e);
+            sideOffset = Vector3.Dot(Abs(bike.right), e);
             footUpOffset = Vector3.Dot(Abs(bike.up), e);
+        }
+        else
+        {
+            Debug.LogWarning("Pedals Renderer belum dimasukkan!");
         }
     }
 
@@ -70,6 +69,8 @@ public class CyclingLegs : MonoBehaviour
     void Foot(AvatarIKGoal goal, AvatarIKHint hint, HumanBodyBones thigh, float a, float side)
     {
         Quaternion spin = Quaternion.AngleAxis(a, bike.right);
+        
+        // Posisi target dihitung otomatis
         Vector3 pos = bottomBracket.position
                     + spin * (bike.forward * crankLength)
                     + bike.right * (side * sideOffset)
