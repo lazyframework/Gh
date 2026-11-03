@@ -3,15 +3,19 @@ using UnityEngine;
 public class RiderFootIK : MonoBehaviour
 {
     [Header("Referensi")]
-    public Transform pedals;           // Drag objek "Pedals" ke sini
+    public Transform cranks; // Masukkan objek Cranks ke sini
+
+    [Header("Jarak Kaki (atur di sini)")]
+    public float jarakKakiKiri = -0.2f; // Jarak ke kiri dari tengah cranks
+    public float jarakKakiKanan = 0.2f; // Jarak ke kanan dari tengah cranks
 
     [Header("IK Settings")]
     [Range(0f, 1f)] public float footIKWeight = 1f;
-    [Range(0f, 1f)] public float footRotationWeight = 0.8f;
+    [Range(0f, 1f)] public float footRotationWeight = 1f;
 
-    [Header("Offset Kaki (atur ini)")]
-    public Vector3 leftFootOffset = new Vector3(-0.15f, 0.02f, 0f);   // Kiri
-    public Vector3 rightFootOffset = new Vector3(0.15f, 0.02f, 0f);  // Kanan
+    [Header("Offset Kaki")]
+    public Vector3 leftFootOffset = new Vector3(0f, 0.08f, 0f);
+    public Vector3 rightFootOffset = new Vector3(0f, 0.08f, 0f);
 
     private Animator animator;
 
@@ -22,22 +26,22 @@ public class RiderFootIK : MonoBehaviour
 
     void OnAnimatorIK(int layerIndex)
     {
-        if (animator == null || pedals == null) return;
+        if (animator == null || cranks == null) return;
 
-        // ===== KAKI KIRI =====
+        // --- KAKI KIRI ---
+        // Posisi tengah Cranks, digeser ke kiri
+        Vector3 leftTargetPos = cranks.position + (cranks.right * jarakKakiKiri) + leftFootOffset;
         animator.SetIKPositionWeight(AvatarIKGoal.LeftFoot, footIKWeight);
         animator.SetIKRotationWeight(AvatarIKGoal.LeftFoot, footRotationWeight);
+        animator.SetIKPosition(AvatarIKGoal.LeftFoot, leftTargetPos);
+        animator.SetIKRotation(AvatarIKGoal.LeftFoot, cranks.rotation);
 
-        Vector3 leftPos = pedals.TransformPoint(leftFootOffset);
-        animator.SetIKPosition(AvatarIKGoal.LeftFoot, leftPos);
-        animator.SetIKRotation(AvatarIKGoal.LeftFoot, pedals.rotation);
-
-        // ===== KAKI KANAN =====
+        // --- KAKI KANAN ---
+        // Posisi tengah Cranks, digeser ke kanan
+        Vector3 rightTargetPos = cranks.position + (cranks.right * jarakKakiKanan) + rightFootOffset;
         animator.SetIKPositionWeight(AvatarIKGoal.RightFoot, footIKWeight);
         animator.SetIKRotationWeight(AvatarIKGoal.RightFoot, footRotationWeight);
-
-        Vector3 rightPos = pedals.TransformPoint(rightFootOffset);
-        animator.SetIKPosition(AvatarIKGoal.RightFoot, rightPos);
-        animator.SetIKRotation(AvatarIKGoal.RightFoot, pedals.rotation);
+        animator.SetIKPosition(AvatarIKGoal.RightFoot, rightTargetPos);
+        animator.SetIKRotation(AvatarIKGoal.RightFoot, cranks.rotation);
     }
 }
