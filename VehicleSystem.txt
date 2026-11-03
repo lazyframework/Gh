@@ -3,16 +3,16 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 #endif
 
-// Pasang di BMX_Bike (menggantikan VehicleSystem.cs lama).
-// Fungsi: naik/turun sepeda (E), gas/rem/belok, dan menyalakan RiderIK pemain.
+// Pasang di BMX_Bike (atau kendaraan lain). Hanya kendaraan TERDEKAT yang bisa dinaiki.
+// Kalau bikeDrive kosong (misal mobil), RiderIK tidak dipasang.
 [RequireComponent(typeof(Rigidbody))]
 public class VehicleSystem : MonoBehaviour
 {
     [Header("Referensi")]
-    public BikeDrive bikeDrive;          // script BikeDrive di sepeda ini
+    public BikeDrive bikeDrive;          // script BikeDrive (khusus sepeda)
     public Transform grips;              // objek "Grips"
-    public Transform seatPoint;          // opsional; kalau kosong pakai seatOffset
-    public Vector3 seatOffset = new Vector3(0f, 0.9f, -0.1f);
+    public Transform seatPoint;          // opsional; kalau kosong pakai hipLocalPos
+    public Vector3 hipLocalPos = new Vector3(0f, 0.85f, -0.15f); // posisi PINGGUL relatif ke kendaraan
     public GameObject player;            // kosong = cari otomatis tag "Player"
 
     [Header("Naik / Turun")]
@@ -25,6 +25,8 @@ public class VehicleSystem : MonoBehaviour
     public float brakeForce = 12f;
     public float friction = 2f;
     public float turnSpeed = 90f;        // derajat per detik
+
+    static VehicleSystem active;         // kendaraan yang sedang dinaiki
 
     Rigidbody rb;
     bool mounted;
@@ -41,6 +43,11 @@ public class VehicleSystem : MonoBehaviour
         if (player == null) player = GameObject.FindGameObjectWithTag("Player");
     }
 
+    void OnDestroy()
+    {
+        if (active == this) active = null;
+    }
+
     void Update()
     {
         if (player == null) return;
@@ -48,8 +55,7 @@ public class VehicleSystem : MonoBehaviour
         if (PressedInteract())
         {
             if (mounted) Dismount();
-            else if (Vector3.Distance(player.transform.position, transform.position) <= mountDistance)
-                Mount();
+            else if (active == null && IsNearest()) Mount();
         }
 
         if (mounted) ReadDriveInput();
@@ -71,7 +77,7 @@ public class VehicleSystem : MonoBehaviour
 
         fwd = Mathf.Clamp(fwd, -maxSpeed * 0.3f, maxSpeed);
 
-        // Sepeda hanya bergerak searah depannya (tidak menyamping)
+        // Kendaraan hanya bergerak searah depannya (tidak menyamping)
         rb.linearVelocity = transform.forward * fwd + Vector3.up * v.y;
 
         if (mounted && Mathf.Abs(fwd) > 0.2f)
@@ -82,31 +88,55 @@ public class VehicleSystem : MonoBehaviour
         }
     }
 
+    // ---------------- Terdekat ----------------
+    bool IsNearest()
+    {
+        float mine = Vector3.Distance(player.transform.position, transform.position);
+        if (mine > mountDistance) return false;
+        foreach (var v in FindObjectsByType<VehicleSystem>(FindObjectsSortMode.None))
+            if (v != this && Vector3.Distance(player.transform.position, v.transform.position) < mine)
+                return false;
+        return true;
+    }
+
     // ---------------- Naik ----------------
     void Mount()
     {
         mounted = true;
+        active = this;
 
         var cc = player.GetComponent<CharacterController>();
         if (cc) cc.enabled = false;
         SetBehaviour("ThirdPersonController", false);
 
         Transform p = player.transform;
-        p.SetParent(seatPoint != null ? seatPoint : transform, false);
-        p.localPosition = seatPoint != null ? Vector3.zero : seatOffset;
-        p.localRotation = Quaternion.identity;
+        p.SetParent(transform, true);
+        p.rotation = transform.rotation;
 
-        var ik = player.GetComponent<RiderIK>();
-        if (ik == null) ik = player.AddComponent<RiderIK>();
-        ik.bike = bikeDrive;
-        ik.grips = grips;
-        ik.enabled = true;
+        // Taruh PINGGUL karakter tepat di titik duduk
+        Vector3 target = seatPoint != null ? seatPoint.position : transform.TransformPoint(hipLocalPos);
+        var anim = player.GetComponent<Animator>();
+        Transform hips = anim != null ? anim.GetBoneTransform(HumanBodyBones.Hips) : null;
+
+        if (hips != null) p.position += target - hips.position;
+        else p.position = target - Vector3.up * 0.95f;
+
+        // IK kaki dan tangan hanya untuk sepeda
+        if (bikeDrive != null)
+        {
+            var ik = player.GetComponent<RiderIK>();
+            if (ik == null) ik = player.AddComponent<RiderIK>();
+            ik.bike = bikeDrive;
+            ik.grips = grips;
+            ik.enabled = true;
+        }
     }
 
     // ---------------- Turun ----------------
     void Dismount()
     {
         mounted = false;
+        active = null;
 
         var ik = player.GetComponent<RiderIK>();
         if (ik) ik.enabled = false;
@@ -121,7 +151,7 @@ public class VehicleSystem : MonoBehaviour
         SetBehaviour("ThirdPersonController", true);
     }
 
-    // Aktif/nonaktif script berdasarkan nama (tidak perlu namespace StarterAssets)
+    // Aktif/nonaktif script berdasarkan nama (tanpa perlu namespace StarterAssets)
     void SetBehaviour(string typeName, bool on)
     {
         foreach (var b in player.GetComponents<MonoBehaviour>())
@@ -153,12 +183,20 @@ public class VehicleSystem : MonoBehaviour
 #endif
     }
 
+    // ---------------- UI & Gizmo ----------------
     void OnGUI()
     {
         if (player == null) return;
         if (mounted)
             GUI.Label(new Rect(20, 20, 400, 30), "W/S gas  A/D belok  Space rem  E turun");
-        else if (Vector3.Distance(player.transform.position, transform.position) <= mountDistance)
-            GUI.Label(new Rect(20, 20, 400, 30), "Tekan E untuk naik sepeda");
+        else if (active == null && IsNearest())
+            GUI.Label(new Rect(20, 20, 400, 30), "Tekan E untuk naik");
+    }
+
+    void OnDrawGizmosSelected()
+    {
+        Gizmos.color = Color.yellow;
+        Vector3 pos = seatPoint != null ? seatPoint.position : transform.TransformPoint(hipLocalPos);
+        Gizmos.DrawWireSphere(pos, 0.12f);
     }
 }
