@@ -1,73 +1,59 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using StarterAssets;
 
 public class BikeController : MonoBehaviour
 {
-    [Header("Pengaturan Gerak")]
-    public float kecepatanMaju = 10f;
-    public float kecepatanBelok = 80f;
-
-    [Header("Pengaturan Pedal")]
-    public Transform crank; 
-    public float kecepatanPutarPedal = 150f;
+    [Header("Bike Settings")]
+    public float moveSpeed = 10f;
+    public float turnSpeed = 80f;
+    public float pedalRotationSpeed = 300f;
 
     private Rigidbody rb;
+    private CyclingLegs legs;
+    private StarterAssetsInputs starterInputs;
 
     void Start()
     {
-        // Ambil komponen Rigidbody
         rb = GetComponent<Rigidbody>();
-        
-        // Jika tidak ada Rigidbody, tambahkan otomatis agar tidak error
-        if (rb == null)
-        {
-            rb = gameObject.AddComponent<Rigidbody>();
-            rb.mass = 50f;
-        }
+        rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
+
+        legs = GetComponentInChildren<CyclingLegs>();
+        starterInputs = GetComponentInChildren<StarterAssetsInputs>();
     }
 
-    void Update()
+    void FixedUpdate()
     {
-        float maju = 0f;
-        float belok = 0f;
+        float moveInput = 0f;
+        float turnInput = 0f;
 
-        // --- CEK APAKAH KEYBOARD TERHUBUNG ---
-        if (Keyboard.current != null)
+        if (starterInputs != null)
         {
-            // Cek tombol W dan S
-            if (Keyboard.current.wKey.isPressed) maju = 1f;
-            if (Keyboard.current.sKey.isPressed) maju = -1f;
-            
-            // Cek tombol A dan D
-            if (Keyboard.current.dKey.isPressed) belok = 1f;
-            if (Keyboard.current.aKey.isPressed) belok = -1f;
-        }
-        else
-        {
-            Debug.LogError("Keyboard tidak terdeteksi oleh Unity Input System!");
+            moveInput = starterInputs.move.y;
+            turnInput = starterInputs.move.x;
         }
 
-        // --- LOGIKA PUTAR PEDAL ---
-        if (crank != null && Mathf.Abs(maju) > 0.1f)
+        if (Keyboard.current != null && Mathf.Approximately(moveInput, 0f) && Mathf.Approximately(turnInput, 0f))
         {
-            // Memutar pedal
-            crank.Rotate(Vector3.right * maju * kecepatanPutarPedal * Time.deltaTime);
-            Debug.Log("Pedal berputar!");
+            if (Keyboard.current.wKey.isPressed) moveInput = 1f;
+            if (Keyboard.current.sKey.isPressed) moveInput = -1f;
+            if (Keyboard.current.aKey.isPressed) turnInput = -1f;
+            if (Keyboard.current.dKey.isPressed) turnInput = 1f;
         }
 
-        // --- LOGIKA MAJU & BELOK ---
-        if (rb != null)
-        {
-            // Maju / Mundur (pakai kecepatan langsung, bukan AddForce agar lebih responsif)
-            Vector3 gerakan = transform.forward * maju * kecepatanMaju;
-            rb.linearVelocity = new Vector3(gerakan.x, rb.linearVelocity.y, gerakan.z);
+        moveInput = Mathf.Clamp(moveInput, -1f, 1f);
+        turnInput = Mathf.Clamp(turnInput, -1f, 1f);
 
-            // Belok
-            if (Mathf.Abs(belok) > 0.1f)
-            {
-                float rotasiY = belok * kecepatanBelok * Time.deltaTime;
-                transform.Rotate(0f, rotasiY, 0f);
-            }
+        Vector3 moveDirection = transform.forward * moveInput * moveSpeed;
+        rb.linearVelocity = new Vector3(moveDirection.x, rb.linearVelocity.y, moveDirection.z);
+
+        if (Mathf.Abs(moveInput) > 0.1f)
+        {
+            Quaternion turnRotation = Quaternion.Euler(0f, turnInput * turnSpeed * Time.fixedDeltaTime, 0f);
+            rb.MoveRotation(rb.rotation * turnRotation);
         }
+
+        if (legs != null)
+            legs.SetSpeed(moveInput * pedalRotationSpeed);
     }
 }
