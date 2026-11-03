@@ -1,137 +1,99 @@
-
+using System.Collections.Generic;
 using UnityEngine;
 
 [RequireComponent(typeof(Animator))]
 public class CyclingLegs : MonoBehaviour
 {
-    [Header("Referensi Sepeda")]
-    public Transform bottomBracket;
-    public Transform[] crankParts;
-    public Renderer pedalsRenderer;
+    [Header("Seret dari Hierarchy")]
+    public Transform bottomBracket;   // objek "BB"
+    public Transform[] crankParts;    // objek "Cranks" dan "Pedals"
 
-    [Header("Pengaturan Pedal")]
-    [Min(0.01f)] public float crankLength = 0.3f;
-    public float sideOffset = 0.1f;
-    public float footUpOffset = 0.05f;
-    public float startAngle = 0f;
-
-    [Header("IK Kaki")]
-    [Range(0f, 1f)] public float ikWeight = 1f;
-    public float kneeForwardOffset = 0.3f;
+    [Header("Penyetelan (lihat bola merah/hijau di Scene view)")]
+    public float crankLength = 0.25f;   // jarak BB ke pedal
+    public float sideOffset = 0.15f;    // jarak pedal ke samping dari tengah sepeda
+    public float footUpOffset = 0.05f;  // angkat kaki dari titik pedal
+    public float startAngle = 0f;       // sudut awal (0 atau 180)
+    public float kneeForward = 0.5f;    // arah tekuk lutut ke depan
 
     private Animator anim;
     private Transform bike;
     private float angle;
     private float speed;
-    private Quaternion[] initialCrankRotations;
+    private HashSet<string> paramNames = new HashSet<string>();
 
     void Awake()
     {
         anim = GetComponent<Animator>();
-
         var bc = GetComponentInParent<BikeController>();
         bike = bc != null ? bc.transform : transform;
-
-        if (crankParts != null)
-        {
-            initialCrankRotations = new Quaternion[crankParts.Length];
-
-            for (int i = 0; i < crankParts.Length; i++)
-            {
-                if (crankParts[i] != null)
-                    initialCrankRotations[i] = crankParts[i].rotation;
-            }
-        }
+        foreach (var p in anim.parameters) paramNames.Add(p.name);
     }
 
-    public void SetSpeed(float s)
-    {
-        speed = s;
-    }
+    public void SetSpeed(float s) { speed = s; }
 
     void Update()
     {
-        if (bottomBracket == null || bike == null)
-            return;
+        // ThirdPersonController dimatikan, jadi parameter Animator diatur di sini
+        SetBool("Grounded", true);
+        SetBool("FreeFall", false);
+        SetBool("Jump", false);
+        SetFloat("Speed", 0f);
+        SetFloat("MotionSpeed", 1f);
 
-        angle += speed * Time.deltaTime;
+        float delta = speed * Time.deltaTime;
+        angle += delta;
+        foreach (var part in crankParts)
+            if (part != null)
+                part.RotateAround(bottomBracket.position, bike.right, delta);
+    }
 
-        // Rotasi crank pada sumbu samping sepeda.
-        // Jika arah putaran salah, balik tanda speed.
-        if (crankParts != null)
-        {
-            foreach (Transform part in crankParts)
-            {
-                if (part != null)
-                {
-                    // Catatan: semua objek yang dimasukkan di sini
-                    // harus memang bagian crank yang ingin diputar.
-                    part.RotateAround(
-                        bottomBracket.position,
-                        bike.right,
-                        speed * Time.deltaTime
-                    );
-                }
-            }
-        }
+    // Posisi target kaki. side: +1 kanan, -1 kiri
+    Vector3 FootPos(Transform b, float a, float side)
+    {
+        Quaternion spin = Quaternion.AngleAxis(a, b.right);
+        return bottomBracket.position
+             + spin * (b.forward * crankLength)
+             + b.right * (side * sideOffset)
+             + b.up * footUpOffset;
     }
 
     void OnAnimatorIK(int layerIndex)
     {
-        if (bottomBracket == null || bike == null || anim == null)
-            return;
-
-        SetFoot(
-            AvatarIKGoal.RightFoot,
-            AvatarIKHint.RightKnee,
-            HumanBodyBones.RightUpperLeg,
-            angle + startAngle,
-            1f
-        );
-
-        SetFoot(
-            AvatarIKGoal.LeftFoot,
-            AvatarIKHint.LeftKnee,
-            HumanBodyBones.LeftUpperLeg,
-            angle + startAngle + 180f,
-            -1f
-        );
+        Apply(AvatarIKGoal.RightFoot, AvatarIKHint.RightKnee, HumanBodyBones.RightUpperLeg,
+              FootPos(bike, angle + startAngle, 1f));
+        Apply(AvatarIKGoal.LeftFoot, AvatarIKHint.LeftKnee, HumanBodyBones.LeftUpperLeg,
+              FootPos(bike, angle + startAngle + 180f, -1f));
     }
 
-    void SetFoot(
-        AvatarIKGoal goal,
-        AvatarIKHint hint,
-        HumanBodyBones thigh,
-        float degrees,
-        float side
-    )
+    void Apply(AvatarIKGoal goal, AvatarIKHint hint, HumanBodyBones thigh, Vector3 pos)
     {
-        Quaternion orbit = Quaternion.AngleAxis(degrees, bike.right);
-
-        // Titik pedal bergerak pada lingkaran vertikal.
-        Vector3 pedalPosition =
-            bottomBracket.position
-            + orbit * (bike.forward * crankLength)
-            + bike.right * (side * sideOffset)
-            + bike.up * footUpOffset;
-
-        anim.SetIKPositionWeight(goal, ikWeight);
-        anim.SetIKPosition(goal, pedalPosition);
-
-        // Orientasi dasar telapak kaki.
-        anim.SetIKRotationWeight(goal, ikWeight);
+        anim.SetIKPositionWeight(goal, 1f);
+        anim.SetIKRotationWeight(goal, 1f);
+        anim.SetIKPosition(goal, pos);
         anim.SetIKRotation(goal, bike.rotation);
 
-        Transform thighBone = anim.GetBoneTransform(thigh);
-
-        if (thighBone != null)
+        Transform t = anim.GetBoneTransform(thigh);
+        if (t != null)
         {
-            anim.SetIKHintPositionWeight(hint, ikWeight);
-            anim.SetIKHintPosition(
-                hint,
-                thighBone.position
-                + bike.forward * kneeForwardOffset
-            );
+            anim.SetIKHintPositionWeight(hint, 1f);
+            anim.SetIKHintPosition(hint, t.position + bike.forward * kneeForward);
         }
     }
+
+    // Bola penanda: terlihat di Scene view, juga sebelum Play
+    void OnDrawGizmos()
+    {
+        if (bottomBracket == null) return;
+        var bc = GetComponentInParent<BikeController>();
+        Transform b = bc != null ? bc.transform : transform;
+
+        float a = Application.isPlaying ? angle + startAngle : startAngle;
+        Gizmos.color = Color.red;
+        Gizmos.DrawSphere(FootPos(b, a, 1f), 0.05f);     // kaki kanan
+        Gizmos.color = Color.green;
+        Gizmos.DrawSphere(FootPos(b, a + 180f, -1f), 0.05f); // kaki kiri
+    }
+
+    void SetBool(string n, bool v)   { if (paramNames.Contains(n)) anim.SetBool(n, v); }
+    void SetFloat(string n, float v) { if (paramNames.Contains(n)) anim.SetFloat(n, v); }
 }
