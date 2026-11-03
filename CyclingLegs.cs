@@ -4,22 +4,21 @@ using UnityEngine;
 public class CyclingLegs : MonoBehaviour
 {
     [Header("Seret dari Hierarchy")]
-    public Transform bottomBracket;   // objek "BB"
-    public Transform[] crankParts;    // objek "Cranks" dan "Pedals"
-    public Renderer pedalsRenderer;   // objek "Pedals" (untuk hitung ukuran otomatis)
+    public Transform bottomBracket;   
+    public Transform[] crankParts;    
+    public Renderer pedalsRenderer;   
 
-    [Header("Penyesuaian (biarkan 0 = otomatis)")]
-    public float startAngle = 0f;     // ganti 180 kalau kaki kiri/kanan tertukar
+    [Header("Penyesuaian")]
+    public float crankLength = 0.2f;  // Kita isi manual dulu 0.2 untuk tes
+    public float sideOffset = 0.1f;   // Kita isi manual dulu 0.1 untuk tes
+    public float footUpOffset = 0.05f;
+    public float startAngle = 0f;     
 
     private Animator anim;
     private Transform bike;
     private float angle;
     private float speed;
-    
-    // Nilai otomatis
-    private float crankLength;
-    private float sideOffset;
-    private float footUpOffset;
+    private Vector3 dbgL, dbgR;
 
     void Awake()
     {
@@ -30,24 +29,9 @@ public class CyclingLegs : MonoBehaviour
 
     void Start()
     {
-        // Karena ThirdPersonController dimatikan
         anim.SetBool("Grounded", true);
         anim.SetFloat("Speed", 0f);
         anim.SetFloat("MotionSpeed", 1f);
-
-        if (pedalsRenderer != null)
-        {
-            Vector3 e = pedalsRenderer.bounds.extents;
-            
-            // Hitung semua nilai secara otomatis dari ukuran mesh pedal
-            crankLength = Vector3.Dot(Abs(bike.forward), e);
-            sideOffset = Vector3.Dot(Abs(bike.right), e);
-            footUpOffset = Vector3.Dot(Abs(bike.up), e);
-        }
-        else
-        {
-            Debug.LogWarning("Pedals Renderer belum dimasukkan!");
-        }
     }
 
     public void SetSpeed(float s) { speed = s; }
@@ -70,11 +54,14 @@ public class CyclingLegs : MonoBehaviour
     {
         Quaternion spin = Quaternion.AngleAxis(a, bike.right);
         
-        // Posisi target dihitung otomatis
+        // Posisi target
         Vector3 pos = bottomBracket.position
                     + spin * (bike.forward * crankLength)
                     + bike.right * (side * sideOffset)
                     + bike.up * footUpOffset;
+
+        // Simpan untuk bola debug
+        if (goal == AvatarIKGoal.RightFoot) dbgR = pos; else dbgL = pos;
 
         anim.SetIKPositionWeight(goal, 1f);
         anim.SetIKRotationWeight(goal, 1f);
@@ -85,5 +72,10 @@ public class CyclingLegs : MonoBehaviour
         anim.SetIKHintPosition(hint, anim.GetBoneTransform(thigh).position + bike.forward * 0.5f);
     }
 
-    static Vector3 Abs(Vector3 v) => new Vector3(Mathf.Abs(v.x), Mathf.Abs(v.y), Mathf.Abs(v.z));
+    // Memunculkan bola debug di Scene view
+    void OnDrawGizmos()
+    {
+        Gizmos.color = Color.red;   Gizmos.DrawSphere(dbgR, 0.05f); // Kaki Kanan
+        Gizmos.color = Color.green; Gizmos.DrawSphere(dbgL, 0.05f); // Kaki Kiri
+    }
 }
